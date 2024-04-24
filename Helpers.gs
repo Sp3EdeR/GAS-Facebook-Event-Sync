@@ -1077,8 +1077,7 @@ function callWithBackoff(func, maxRetries) {
             }) ) {
         throw err;
       } else if ( tries > maxRetries) {
-        Logger.log(`Error, giving up after trying ${maxRetries} times [${err}]`);
-        return null;
+        throw `Error, giving up after trying ${maxRetries} times [${err}]`;
       } else {
         Logger.log( "Error, Retrying... [" + err  +"]");
         Utilities.sleep (Math.pow(2,tries)*100) +
