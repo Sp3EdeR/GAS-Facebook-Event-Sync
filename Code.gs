@@ -46,6 +46,7 @@ var defaultAllDayReminder = -1;           // Default reminder for all day events
                                           // See https://github.com/derekantrican/GAS-ICS-Sync/issues/75 for why this is neccessary.
 var overrideVisibility = "";              // Changes the visibility of the event ("default", "public", "private", "confidential"). Anything else will revert to the class value of the ICAL event.
 var addTasks = false;
+var addUrlToDescription = false;          // Adds the event's URL to the start of the event's description.
 
 var emailSummary = false;                 // Will email you when an event is added/modified/removed to your calendar
 var email = "";                           // OPTIONAL: If "emailSummary" is set to true or you want to receive update notifications, you will need to provide your email address

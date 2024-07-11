@@ -422,11 +422,13 @@ function createEvent(event, calendarTz){
       newEvent.status = status;
   }
 
+  eventUrl = null;
   if (event.hasProperty('url') && event.getFirstPropertyValue('url').toString().substring(0,4) == 'http'){
+    eventUrl = event.getFirstPropertyValue('url').toString()
     newEvent.source = callWithBackoff(function() {
           return Calendar.newEventSource();
         }, defaultMaxRetries);
-    newEvent.source.url = event.getFirstPropertyValue('url').toString();
+    newEvent.source.url = eventUrl;
     newEvent.source.title = 'link';
   }
 
@@ -460,8 +462,15 @@ function createEvent(event, calendarTz){
     newEvent.summary = "(" + calName + ") " + newEvent.summary;
   }
 
-  if (event.hasProperty('description'))
-    newEvent.description = linkifyHtml(icalEvent.description, { defaultProtocol: 'https' });
+  var description = '';
+  if (addUrlToDescription && eventUrl)
+    description = eventUrl;
+  if (event.hasProperty('description')){
+    if (description)
+      description += '\n\n';
+    description += icalEvent.description;
+  }
+  newEvent.description = linkifyHtml(description);
 
   if (event.hasProperty('location'))
     newEvent.location = icalEvent.location;
