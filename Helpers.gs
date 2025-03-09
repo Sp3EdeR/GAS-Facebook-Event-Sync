@@ -244,6 +244,10 @@ function parseResponses(responses){
   //No need to process calcelled events as they will be added to gcal's trash anyway
   result = result.filter(function(event){
     try{
+      if (excludedEvents && excludedEvents.includes(event.getFirstPropertyValue('uid').toString()))
+        return false;
+    }catch(e){}
+    try{
       return (event.getFirstPropertyValue('status').toString().toLowerCase() != "cancelled");
     }catch(e){
       return true;
