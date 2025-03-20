@@ -21,14 +21,23 @@
 *=========================================
 */
 
-var sourceCalendars = [                // The ics/ical urls that you want to get events from along with their target calendars (list a new row for each mapping of ICS url to Google Calendar)
-                                       // For instance: ["https://p24-calendars.icloud.com/holidays/us_en.ics", "US Holidays"]
-                                       // Or with colors following mapping https://developers.google.com/apps-script/reference/calendar/event-color,
-                                       // for instance: ["https://p24-calendars.icloud.com/holidays/us_en.ics", "US Holidays", "11"]
-  ["icsUrl1", "targetCalendar1"],
-  ["icsUrl2", "targetCalendar2"],
-  ["icsUrl3", "targetCalendar1"]
-
+var sourceCalendars = [                // Data for the synchronization of the ics/ical urls that you want to get events from, along with their target calendars.
+                                       // Each item is a dict. "src" is the source ics, "trgt" is the calendar to sync it to.
+                                       // The "filter" field is a function that takes the event object and returns true to add it, or false to drop it.
+                                       // The "formatter" field is a function that takes the event object and modifies its fields in any way desired.
+  {
+    "src": "icsUrl1"
+    "trgt": "targetCalendar1",
+    "filter": event => true,           // This keeps all events
+    "formatter": event => {            // This overwrites all events' subjects with the given text
+      event.updatePropertyWithValue('summary', 'Overwritten subject content');
+    }
+  },
+  {
+    "src": "icsUrl2"
+    "trgt": "targetCalendar1",
+    "filter": event => false,           // This drops all events
+  }
 ];
 
 var howFrequent = 15;                     // What interval (minutes) to run this script on to check for new events.  Any integer can be used, but will be rounded up to 5, 10, 15, 30 or to the nearest hour after that.. 60, 120, etc. 1440 (24 hours) is the maximum value.  Anything above that will be replaced with 1440.
@@ -173,11 +182,11 @@ function startSync(){
     recurringEvents = [];
 
     targetCalendarName = calendar[0];
-    var sourceCalendarURLs = calendar[1];
+    var sourceCalendarData = calendar[1];
     var vevents;
 
     //------------------------ Fetch URL items ------------------------
-    var responses = fetchSourceCalendars(sourceCalendarURLs);
+    var responses = fetchSourceCalendars(sourceCalendarData);
     Logger.log("Syncing " + responses.length + " calendars to " + targetCalendarName);
 
     //------------------------ Get target calendar information------------------------

@@ -94,16 +94,16 @@ function condenseCalendarMap(calendarMap){
   for (var mapping of calendarMap){
     var index = -1;
     for (var i = 0; i < result.length; i++){
-      if (result[i][0] == mapping[1]){
+      if (result[i][0] == mapping["trgt"]){
         index = i;
         break;
       }
     }
 
     if (index > -1)
-      result[index][1].push([mapping[0],mapping[2]]);
+      result[index][1].push(mapping);
     else
-      result.push([ mapping[1], [[mapping[0],mapping[2]]] ]);
+      result.push([ mapping["trgt"], [mapping] ]);
   }
 
   return result;
@@ -124,14 +124,13 @@ function deleteAllTriggers(){
 /**
  * Gets the ressource from the specified URLs.
  *
- * @param {Array.string} sourceCalendarURLs - Array with URLs to fetch
- * @return {Array.string} The ressources fetched from the specified URLs
+ * @param {Array.string} sourceCalendarData - Object with multiple fields to control fetching
+ * @return {Array.string} The resources fetched from the specified URLs
  */
-function fetchSourceCalendars(sourceCalendarURLs){
+function fetchSourceCalendars(sourceCalendarData){
   var result = []
-  for (var source of sourceCalendarURLs){
-    var url = source[0].replace("webcal://", "https://");
-    var colorId = source[1];
+  for (var data of sourceCalendarData){
+    var url = data["src"].replace("webcal://", "https://");
     
     callWithBackoff(function() {
       var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
@@ -156,7 +155,7 @@ function fetchSourceCalendars(sourceCalendarURLs){
           }
           Logger.log("[WARNING] Microsoft is incorrectly formatting ics/ical at: " + url)
         }
-        result.push([urlContent[0], colorId]);
+        result.push([urlContent[0], data]);
         return; 
       }
       else{ //Throw here to make callWithBackoff run again
@@ -205,7 +204,7 @@ function parseResponses(responses){
   var result = [];
   for (var itm of responses){
     var resp = itm[0];
-    var colorId = itm[1];
+    const data = itm[1];
     var jcalData = ICAL.parse(resp);
     var component = new ICAL.Component(jcalData);
 
@@ -216,8 +215,14 @@ function parseResponses(responses){
     }
 
     var allEvents = component.getAllSubcomponents("vevent");
-    if (colorId != undefined)
-      allEvents.forEach(function(event){event.addPropertyWithValue("color", colorId);});
+    if (data.filter != undefined)
+      allEvents = allEvents.filter(data.filter);
+
+    if (data.formatter != undefined)
+      allEvents.forEach(data.formatter);
+
+    if (data.colorId != undefined)
+      allEvents.forEach(function(event){event.addPropertyWithValue("color", data.colorId);});
 
     var calName = component.getFirstPropertyValue("x-wr-calname") || component.getFirstPropertyValue("name");
     if (calName != null)
