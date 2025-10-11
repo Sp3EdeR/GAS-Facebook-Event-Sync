@@ -137,6 +137,12 @@ function fetchSourceCalendars(sourceCalendarURLs){
       var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
       if (urlResponse.getResponseCode() == 200){
         var icsContent = urlResponse.getContentText()
+
+        // Facebook has a bug that sometimes results in SUMMARY broken into multiple lines incorrectly. This tries to fix that problem.
+        // Indent broken summary lines with a space
+        const summaryRegex = /^SUMMARY:.*(?:\n(?:(?![A-Z-]+[:;])).*)+$/gm;
+        icsContent = icsContent.replace(summaryRegex, m => m.replace('\n', ' '));
+
         const icsRegex = RegExp("(BEGIN:VCALENDAR.*?END:VCALENDAR)", "s")
         var urlContent = icsRegex.exec(icsContent);
         if (urlContent == null){
