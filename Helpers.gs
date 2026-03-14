@@ -127,10 +127,15 @@ function deleteAllTriggers(){
  * @param {Array.string} sourceCalendarData - Object with multiple fields to control fetching
  * @return {Array.string} The resources fetched from the specified URLs
  */
+var sourceCache = {};
 function fetchSourceCalendars(sourceCalendarData){
   var result = []
   for (var data of sourceCalendarData){
     var url = data["src"].replace("webcal://", "https://");
+    if (url in sourceCache) {
+      result.push([sourceCache[url], data]);
+      continue;
+    }
     
     callWithBackoff(function() {
       var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
@@ -155,6 +160,7 @@ function fetchSourceCalendars(sourceCalendarData){
           }
           Logger.log("[WARNING] Microsoft is incorrectly formatting ics/ical at: " + url)
         }
+        sourceCache[url] = urlContent[0];
         result.push([urlContent[0], data]);
         return; 
       }
