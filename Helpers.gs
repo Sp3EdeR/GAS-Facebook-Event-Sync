@@ -137,7 +137,7 @@ function fetchSourceCalendars(sourceCalendarData){
       continue;
     }
     
-    callWithBackoff(function() {
+    var calData = callWithBackoff(function() {
       var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
       if (urlResponse.getResponseCode() == 200){
         var icsContent = urlResponse.getContentText()
@@ -156,18 +156,22 @@ function fetchSourceCalendars(sourceCalendarData){
           urlContent = icsRegex.exec(icsContent)
           if (urlContent == null){
             Logger.log("[ERROR] Incorrect ics/ical URL: " + url)
-            return
+            return null;
           }
           Logger.log("[WARNING] Microsoft is incorrectly formatting ics/ical at: " + url)
         }
         sourceCache[url] = urlContent[0];
-        result.push([urlContent[0], data]);
-        return; 
+        return [urlContent[0], data];
       }
       else{ //Throw here to make callWithBackoff run again
         throw "Error: Encountered HTTP error " + urlResponse.getResponseCode() + " when accessing " + url; 
       }
     }, defaultMaxRetries);
+
+    if (!calData){
+      throw `Error: Cannot sync ${sourceCalendarData[0]["trgt"]}. Stopping.`;
+    }
+    result.push(calData);
   }
   
   return result;
