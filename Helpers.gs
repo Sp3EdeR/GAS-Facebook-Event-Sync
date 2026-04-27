@@ -1076,7 +1076,8 @@ var backoffRecoverableErrors = [
   "service invoked too many times in a short time",
   "rate limit exceeded",
   "internal error",
-  "corrupted data received"];
+  "corrupted data received",
+  "empty response"];
 function callWithBackoff(func, maxRetries) {
   var tries = 0;
   var result;
