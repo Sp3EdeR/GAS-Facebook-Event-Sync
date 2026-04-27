@@ -1072,7 +1072,8 @@ function sendSummary() {
 var backoffRecoverableErrors = [
   "service invoked too many times in a short time",
   "rate limit exceeded",
-  "internal error"];
+  "internal error",
+  "empty response"];
 function callWithBackoff(func, maxRetries) {
   var tries = 0;
   var result;
