@@ -134,7 +134,14 @@ function fetchSourceCalendars(sourceCalendarURLs){
     var colorId = source[1];
     
     callWithBackoff(function() {
-      var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
+      var urlResponse = UrlFetchApp.fetch(url, {
+        'followRedirects': false,
+        'validateHttpsCertificates' : false,
+        'muteHttpExceptions' : true,
+        headers: {
+          Accept: 'text/calendar,text/plain;q=0.9,*/*;q=0.1'
+        }
+      });
       if (urlResponse.getResponseCode() == 200){
         var icsContent = urlResponse.getContentText()
 
@@ -1077,7 +1084,9 @@ var backoffRecoverableErrors = [
   "rate limit exceeded",
   "internal error",
   "corrupted data received",
-  "empty response"];
+  "empty response",
+  "http error 302", // Facebook login redirection
+  "http error 5"];
 function callWithBackoff(func, maxRetries) {
   var tries = 0;
   var result;
@@ -1089,12 +1098,10 @@ function callWithBackoff(func, maxRetries) {
     }
     catch(err){
       err = err.message  || err;
-      if ( err.includes("HTTP error") ) {
-        Logger.log(err);
-        return null;
-      } else if ( err.includes("is not a function")  || !backoffRecoverableErrors.some(function(e){
+      if ( err.includes("is not a function")  || !backoffRecoverableErrors.some(function(e){
               return err.toLowerCase().includes(e);
             }) ) {
+        Logger.log( "Error, exiting. [" + err  +"]");
         throw err;
       } else if ( tries > maxRetries) {
         throw `Error, giving up after trying ${maxRetries} times [${err}]`;
