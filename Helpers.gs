@@ -327,6 +327,7 @@ function processEvent(event, calendarTz){
         newEvent = callWithBackoff(function(){
           return Calendar.Events.update(newEvent, targetCalendarId, calendarEvents[index].id);
         }, defaultMaxRetries);
+        recordMetadataEvent(targetCalendarId, newEvent, calendarEvents[index].id);
         if (newEvent != null && emailSummary){
           modifiedEvents.push([[oldEvent.summary, newEvent.summary, oldEvent.start.date||oldEvent.start.dateTime, newEvent.start.date||newEvent.start.dateTime, oldEvent.end.date||oldEvent.end.dateTime, newEvent.end.date||newEvent.end.dateTime, oldEvent.location, newEvent.location, oldEvent.description, newEvent.description], targetCalendarName]);
         }
@@ -338,6 +339,7 @@ function processEvent(event, calendarTz){
         newEvent = callWithBackoff(function(){
           return Calendar.Events.insert(newEvent, targetCalendarId);
         }, defaultMaxRetries);
+        recordMetadataEvent(targetCalendarId, newEvent);
         if (newEvent != null && emailSummary){
           addedEvents.push([[newEvent.summary, newEvent.start.date||newEvent.start.dateTime, newEvent.end.date||newEvent.end.dateTime, newEvent.location, newEvent.description], targetCalendarName]);
         }
@@ -750,17 +752,19 @@ function processEventInstance(recEvent){
   if (eventInstanceToPatch !== null && eventInstanceToPatch.length == 1){
     if (modifyExistingEvents){
       Logger.log("Updating existing event instance");
-      callWithBackoff(function(){
-        Calendar.Events.update(recEvent, targetCalendarId, eventInstanceToPatch[0].id);
+      var updatedEventInstance = callWithBackoff(function(){
+        return Calendar.Events.update(recEvent, targetCalendarId, eventInstanceToPatch[0].id);
       }, defaultMaxRetries);
+      recordMetadataEvent(targetCalendarId, updatedEventInstance, eventInstanceToPatch[0].id);
     }
   }
   else{
     if (addEventsToCalendar){
       Logger.log("No Instance matched, adding as new event!");
-      callWithBackoff(function(){
-        Calendar.Events.insert(recEvent, targetCalendarId);
+      var addedEventInstance = callWithBackoff(function(){
+        return Calendar.Events.insert(recEvent, targetCalendarId);
       }, defaultMaxRetries);
+      recordMetadataEvent(targetCalendarId, addedEventInstance);
     }
   }
 }
@@ -787,6 +791,7 @@ function processEventCleanup(){
         callWithBackoff(function(){
           Calendar.Events.remove(targetCalendarId, calendarEvents[i].id);
         }, defaultMaxRetries);
+        removeMetadataEvent(targetCalendarId, calendarEvents[i].id);
 
         if (emailSummary){
           removedEvents.push([[calendarEvents[i].summary, calendarEvents[i].start.date||calendarEvents[i].start.dateTime, calendarEvents[i].end.date||calendarEvents[i].end.dateTime, calendarEvents[i].location, calendarEvents[i].description], targetCalendarName]);
