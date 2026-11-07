@@ -6,15 +6,18 @@ var geocodingBounds = {
 };
 
 /**
- * Updates cached coordinates and latest event end times for changed events.
+ * Updates cached coordinates and latest event end times from final sync snapshots.
  *
- * @param {Array<Calendar.Event>} events New or modified Google Calendar events.
+ * @param {Object<string, Array<Calendar.Event>>} eventsByCalendar Events keyed by calendar ID.
  */
-function updateGeocoding(events) {
+function updateGeocoding(eventsByCalendar) {
+  var events = Object.keys(eventsByCalendar || {}).reduce(
+    (all, calendarId) => all.concat(eventsByCalendar[calendarId]),
+    []
+  );
   Logger.log("Updating the geocoding data: events=%s", events.length);
 
   // Get location and event end time for future events
-  events = events || [];
   var latestByLocation = {};
   var now = Date.now();
   events.forEach(function(event) {
