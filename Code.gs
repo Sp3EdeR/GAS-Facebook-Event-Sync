@@ -153,7 +153,6 @@ var targetCalendarName;
 var addedEvents = [];
 var modifiedEvents = [];
 var removedEvents = [];
-var geocodingEvents = [];
 var metadataEventsByCalendar = {};
 
 function clearState(){
@@ -212,7 +211,6 @@ function startSync(){
         if (eventList != null)
           calendarEvents = [].concat(calendarEvents, eventList.items);
       }
-      geocodingEvents = [].concat(geocodingEvents, calendarEvents);
       metadataEventsByCalendar[targetCalendarId] = calendarEvents.slice();
       Logger.log("Fetched " + calendarEvents.length + " existing events from " + targetCalendarName);
       for (var i = 0; i < calendarEvents.length; i++){
@@ -263,7 +261,7 @@ function startSync(){
 
   updateMetadata(metadataEventsByCalendar);
   updateDataCache(metadataEventsByCalendar);
-  updateGeocoding(geocodingEvents);
+  updateGeocoding(metadataEventsByCalendar);
   if ((addedEvents.length + modifiedEvents.length + removedEvents.length) > 0 && emailSummary){
     sendSummary();
   }
