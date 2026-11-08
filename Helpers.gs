@@ -128,6 +128,17 @@ function deleteAllTriggers(){
  * @return {Array.string} The resources fetched from the specified URLs
  */
 var sourceCache = {};
+function fetchWithRateLimitRetry(url, params){
+  const rateLimitRetryDelaysMs = [2000, 4000, 8000, 8000];
+  for (var attempt = 0; ; attempt++){
+    var response = UrlFetchApp.fetch(url, params);
+    if (response.getResponseCode() != 429 || attempt >= rateLimitRetryDelaysMs.length)
+      return response;
+
+    Logger.log(`HTTP 429 (rate limited) from ${url}. Retrying in ${rateLimitRetryDelaysMs[attempt] / 1000}s...`);
+    Utilities.sleep(rateLimitRetryDelaysMs[attempt]);
+  }
+}
 function fetchSourceCalendars(sourceCalendarData){
   var result = []
   for (var data of sourceCalendarData){
@@ -138,7 +149,7 @@ function fetchSourceCalendars(sourceCalendarData){
     }
     
     var calData = callWithBackoff(function() {
-      var urlResponse = UrlFetchApp.fetch(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
+      var urlResponse = fetchWithRateLimitRetry(url, { 'validateHttpsCertificates' : false, 'muteHttpExceptions' : true });
       if (urlResponse.getResponseCode() == 200){
         var icsContent = urlResponse.getContentText()
         const icsRegex = RegExp("(BEGIN:VCALENDAR.*?END:VCALENDAR)", "s")
