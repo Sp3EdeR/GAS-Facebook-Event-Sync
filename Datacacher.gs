@@ -39,7 +39,7 @@ function updateDataCache(eventsByCalendar) {
     });
   }
 
-  var now = Date.now();
+  var startOfToday = new Date().setUTCHours(0, 0, 0, 0);
   var newIds = [];
   calendarIds.forEach(function(calendarId) {
     var sheet = sheetsByName[calendarId];
@@ -51,7 +51,7 @@ function updateDataCache(eventsByCalendar) {
 
     // Write events to the sheet for this calendar
     writeDataCacheRows(sheet, [dataHeaders].concat(
-      getDataCacheRows(eventsByCalendar[calendarId], now)));
+      getDataCacheRows(eventsByCalendar[calendarId], startOfToday)));
 
     // Add the calendar ID to the list of new IDs if it hasn't been registered yet
     if (!registered[calendarId]) {
@@ -118,16 +118,16 @@ function updateDataCache(eventsByCalendar) {
  * Builds export rows with ISO UTC dates and unchanged event text, including HTML.
  *
  * @param {Array<Calendar.Event>} events Calendar events already loaded by the sync.
- * @param {number} now Current UTC epoch milliseconds.
- * @return {Array<Array<string>>} Upcoming event rows.
+ * @param {number} startOfToday Start of the current UTC day in epoch milliseconds.
+ * @return {Array<Array<string>>} Rows for events ending at or after the cutoff.
  */
-function getDataCacheRows(events, now) {
+function getDataCacheRows(events, startOfToday) {
   var rows = [];
   (events || []).forEach(function(event) {
     if (!event || event.status == "cancelled")
       return;
     var end = getEventEnd(event);
-    if (end == null || end <= now)
+    if (end == null || end < startOfToday)
       return;
     var start = event.start || {};
     var startTime = new Date(start.dateTime || start.date).getTime();
