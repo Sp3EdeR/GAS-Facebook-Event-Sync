@@ -217,6 +217,47 @@ function isRecurringSourceEvent(event){
     event.hasProperty('rdate') || event.hasProperty('exdate');
 }
 
+function loadExcludedEvents(){
+  var fileName = "facebook_excluded_events";
+  var files = DriveApp.getFilesByName(fileName);
+  while (files.hasNext()){
+    var file = files.next();
+    if (file.getMimeType() != MimeType.GOOGLE_SHEETS)
+      continue;
+
+    var sheet = SpreadsheetApp.openById(file.getId()).getSheets()[0];
+    var lastRow = sheet.getLastRow();
+    if (lastRow == 0)
+      return [];
+
+    var cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    var columnCount = sheet.getLastColumn();
+    var range = sheet.getRange(1, 1, lastRow, columnCount);
+    var exclusions = range.getValues().filter(function(row){
+      var date = row[1];
+      var time = typeof date === "string" ? Date.parse(date) : date?.getTime?.();
+      return !(time < cutoff);
+    });
+
+    // Delete expired events
+    if (exclusions.length < lastRow){
+      while (exclusions.length < lastRow)
+        exclusions.push(Array(columnCount).fill(""));
+      range.setValues(exclusions);
+    }
+    return exclusions.flatMap(function(row){
+      var value = String(row[0]).trim();
+      if (/^e\d+@facebook\.com$/.test(value))
+        return [value];
+      var link = /^https?:\/\/(?:www\.)?facebook\.com\/events\/(?:[^/?#]+\/)*(\d+)\/?/.exec(value);
+      return link ? ["e" + link[1] + "@facebook.com"] : [];
+    });
+  }
+
+  Logger.log("[WARNING] Google Spreadsheet '" + fileName + "' not found; no event exclusions loaded.");
+  return [];
+}
+
 /**
  * Parses all sources using ical.js.
  * Registers all found timezones with TimezoneService.
@@ -268,10 +309,8 @@ function parseResponses(responses){
 
   //No need to process calcelled events as they will be added to gcal's trash anyway
   result = result.filter(function(event){
-    try{
-      if (excludedEvents && excludedEvents.includes(event.getFirstPropertyValue('uid').toString()))
-        return false;
-    }catch(e){}
+    if (excludedEvents.includes(event.getFirstPropertyValue('uid')))
+      return false;
     try{
       return (event.getFirstPropertyValue('status').toString().toLowerCase() != "cancelled");
     }catch(e){

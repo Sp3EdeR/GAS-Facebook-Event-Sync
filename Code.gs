@@ -31,10 +31,6 @@ var sourceCalendars = [                // The ics/ical urls that you want to get
 
 ];
 
-var excludedEvents = [                    // Workaround filter for canceled events not being removed or marked as canceled in the ICS feed. Manual filtering is made possible here.
-                                          // List excluded events as strings, by the exact UID as it appears in the ICS file.
-];
-
 var howFrequent = 15;                     // What interval (minutes) to run this script on to check for new events.  Any integer can be used, but will be rounded up to 5, 10, 15, 30 or to the nearest hour after that.. 60, 120, etc. 1440 (24 hours) is the maximum value.  Anything above that will be replaced with 1440.
 var onlyFutureEvents = true;              // If you turn this to "true", past events will not be synced (this will also remove past events from the target calendar if removeEventsFromCalendar is true)
 var addEventsToCalendar = true;           // If you turn this to "false", you can check the log (View > Logs) to make sure your events are being read correctly before turning this on
@@ -150,6 +146,7 @@ var addedEvents = [];
 var modifiedEvents = [];
 var removedEvents = [];
 var metadataEventsByCalendar = {};
+var excludedEvents = [];
 
 function clearState(){
   PropertiesService.getUserProperties().setProperty('LastRun', 0);
@@ -173,6 +170,9 @@ function startSync(){
 
   //Disable email notification if no mail adress is provided
   emailSummary = emailSummary && email != "";
+
+  if (addEventsToCalendar || modifyExistingEvents || removeEventsFromCalendar)
+    excludedEvents = loadExcludedEvents();
 
   sourceCalendars = condenseCalendarMap(sourceCalendars);
   for (var calendar of sourceCalendars){
