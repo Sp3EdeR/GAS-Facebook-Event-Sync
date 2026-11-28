@@ -36,7 +36,7 @@ var excludedEvents = [                    // Workaround filter for canceled even
 ];
 
 var howFrequent = 15;                     // What interval (minutes) to run this script on to check for new events.  Any integer can be used, but will be rounded up to 5, 10, 15, 30 or to the nearest hour after that.. 60, 120, etc. 1440 (24 hours) is the maximum value.  Anything above that will be replaced with 1440.
-var onlyFutureEvents = false;             // If you turn this to "true", past events will not be synced (this will also removed past events from the target calendar if removeEventsFromCalendar is true)
+var onlyFutureEvents = true;              // If you turn this to "true", past events will not be synced (this will also remove past events from the target calendar if removeEventsFromCalendar is true)
 var addEventsToCalendar = true;           // If you turn this to "false", you can check the log (View > Logs) to make sure your events are being read correctly before turning this on
 var modifyExistingEvents = true;          // If you turn this to "false", any event in the feed that was modified after being added to the calendar will not update
 var removeEventsFromCalendar = true;      // If you turn this to "true", any event created by the script that is not found in the feed will be removed.
@@ -164,8 +164,12 @@ function startSync(){
 
   PropertiesService.getUserProperties().setProperty('LastRun', new Date().getTime());
 
-  if (onlyFutureEvents)
-    startUpdateTime = new ICAL.Time.fromJSDate(new Date());
+  var googleEventCutoff = null;
+  if (onlyFutureEvents){
+    var now = new Date();
+    startUpdateTime = new ICAL.Time.fromJSDate(now);
+    googleEventCutoff = now.getTime() - 12 * 60 * 60 * 1000;
+  }
 
   //Disable email notification if no mail adress is provided
   emailSummary = emailSummary && email != "";
@@ -194,20 +198,24 @@ function startSync(){
 
     //------------------------ Parse existing events --------------------------
     if(addEventsToCalendar || modifyExistingEvents || removeEventsFromCalendar){
-      var eventList =
-        callWithBackoff(function(){
-            return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500});
-        }, defaultMaxRetries);
-      calendarEvents = [].concat(calendarEvents, eventList.items);
-      //loop until we received all events
-      while(typeof eventList.nextPageToken !== 'undefined'){
-        eventList = callWithBackoff(function(){
-          return Calendar.Events.list(targetCalendarId, {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500, pageToken: eventList.nextPageToken});
-        }, defaultMaxRetries);
-
-        if (eventList != null)
-          calendarEvents = [].concat(calendarEvents, eventList.items);
+      vevents = parseResponses(responses);
+      var listOptions = {showDeleted: false, privateExtendedProperty: "fromGAS=true", maxResults: 2500};
+      if (googleEventCutoff != null && !vevents.some(isRecurringSourceEvent)) {
+        // Facebook's upcoming feed only needs recent end times; retain today's rows for the data cache.
+        var utcDayStart = new Date();
+        utcDayStart.setUTCHours(0, 0, 0, 0);
+        var localDayStart = getLocalStartOfToday(targetCalendar.timeZone);
+        // Calendar's timeMin is exclusive and has second precision.
+        listOptions.timeMin = new Date(Math.min(googleEventCutoff, localDayStart)).toISOString();
       }
+
+      do {
+        var eventList = callWithBackoff(function(){
+          return Calendar.Events.list(targetCalendarId, listOptions);
+        }, defaultMaxRetries);
+        calendarEvents = calendarEvents.concat(eventList.items || []);
+        listOptions.pageToken = eventList.nextPageToken;
+      } while (listOptions.pageToken);
       metadataEventsByCalendar[targetCalendarId] = calendarEvents.slice();
       Logger.log("Fetched " + calendarEvents.length + " existing events from " + targetCalendarName);
       for (var i = 0; i < calendarEvents.length; i++){
@@ -217,8 +225,6 @@ function startSync(){
         }
       }
 
-      //------------------------ Parse ical events --------------------------
-      vevents = parseResponses(responses, icsEventsIds);
       Logger.log("Parsed " + vevents.length + " events from ical sources");
     }
 

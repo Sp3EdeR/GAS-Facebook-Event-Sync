@@ -188,10 +188,16 @@ function fetchSourceCalendars(sourceCalendarURLs){
  * @return {Calendar} The calendar retrieved or created
  */
 function setupTargetCalendar(targetCalendarName){
-  var targetCalendar = Calendar.CalendarList.list({showHidden: true, maxResults: 250}).items.filter(function(cal) {
-    return ((cal.summaryOverride || cal.summary) == targetCalendarName) &&
-                (cal.accessRole == "owner" || cal.accessRole == "writer");
-  })[0];
+  if (!setupTargetCalendar.byName){
+    var byName = new Map();
+    var result = Calendar.CalendarList.list({showHidden: true, maxResults: 250});
+    (result.items || []).forEach(cal => {
+      if ((cal.accessRole == "owner" || cal.accessRole == "writer"))
+        byName.set(cal.summaryOverride || cal.summary, cal);
+    });
+    setupTargetCalendar.byName = byName;
+  }
+  var targetCalendar = setupTargetCalendar.byName.get(targetCalendarName);
 
   if(targetCalendar == null){
     Logger.log("Creating Calendar: " + targetCalendarName);
@@ -200,9 +206,15 @@ function setupTargetCalendar(targetCalendarName){
     targetCalendar.description = "Created by GAS";
     targetCalendar.timeZone = Calendar.Settings.get("timezone").value;
     targetCalendar = Calendar.Calendars.insert(targetCalendar);
+    setupTargetCalendar.byName.set(targetCalendarName, targetCalendar);
   }
 
   return targetCalendar;
+}
+
+function isRecurringSourceEvent(event){
+  return event.hasProperty('recurrence-id') || event.hasProperty('rrule') ||
+    event.hasProperty('rdate') || event.hasProperty('exdate');
 }
 
 /**
@@ -210,7 +222,7 @@ function setupTargetCalendar(targetCalendarName){
  * Registers all found timezones with TimezoneService.
  * Creates an Array with all events and adds the event-ids to the provided Array.
  *
- * @param {Array.string} responses - Array with all ical sources
+ * @param {Array} responses - ICS text and optional color for each source
  * @return {Array.ICALComponent} Array with all events found
  */
 function parseResponses(responses){
@@ -240,15 +252,15 @@ function parseResponses(responses){
 
   if (onlyFutureEvents){
     result = result.filter(function(event){
+      if (isRecurringSourceEvent(event)){
+        //Keep recurrences to properly filter them later on
+        return true;
+      }
       try{
-        if (event.hasProperty('recurrence-id') || event.hasProperty('rrule') || event.hasProperty('rdate') || event.hasProperty('exdate')){
-          //Keep recurrences to properly filter them later on
-          return true;
-        }
-        var eventEnde;
-        eventEnde = new ICAL.Time.fromString(event.getFirstPropertyValue('dtend').toString(), event.getFirstProperty('dtend'));
-        return (eventEnde.compare(startUpdateTime) >= 0);
+        var eventEnd = new ICAL.Event(event, {exceptions: []}).endDate;
+        return (eventEnd.compare(startUpdateTime) >= 0);
       }catch(e){
+        Logger.log("Could not compare end of source event " + event.getFirstPropertyValue('uid') + ": " + e);
         return true;
       }
     });
@@ -600,15 +612,16 @@ function createEvent(event, calendarTz){
  * @return {boolean} Wether it's a past event or not
  */
 function checkSkipEvent(event, icalEvent){
+  var eventEnd = icalEvent.endDate;
   if (icalEvent.isRecurrenceException()){
-    if((icalEvent.startDate.compare(startUpdateTime) < 0) && (icalEvent.recurrenceId.compare(startUpdateTime) < 0)){
+    if((eventEnd.compare(startUpdateTime) < 0) && (icalEvent.recurrenceId.compare(startUpdateTime) < 0)){
       Logger.log("Skipping past recurrence exception");
       return true;
     }
   }
   else if(icalEvent.isRecurring()){
     var skip = false; //Indicates if the recurring event and all its instances are in the past
-    if (icalEvent.endDate.compare(startUpdateTime) < 0){//Parenting recurring event is in the past
+    if (eventEnd.compare(startUpdateTime) < 0){//Parenting recurring event is in the past
       var dtstart = event.getFirstPropertyValue('dtstart');
       var expand = new ICAL.RecurExpansion({component: event, dtstart: dtstart});
       var next;
@@ -616,7 +629,7 @@ function checkSkipEvent(event, icalEvent){
       var countskipped = 0;
       while (next = expand.next()) {
         var diff = next.subtractDate(icalEvent.startDate);
-        var tempEnd = icalEvent.endDate.clone();
+        var tempEnd = eventEnd.clone();
         tempEnd.addDuration(diff);
         if (tempEnd.compare(startUpdateTime) < 0) {
           countskipped ++;
@@ -630,8 +643,8 @@ function checkSkipEvent(event, icalEvent){
       if (newStartDate != null){//At least one instance is in the future
         newStartDate.timezone = icalEvent.startDate.timezone;
         var diff = newStartDate.subtractDate(icalEvent.startDate);
-        icalEvent.endDate.addDuration(diff);
-        var newEndDate = icalEvent.endDate;
+        var newEndDate = eventEnd.clone();
+        newEndDate.addDuration(diff);
         icalEvent.endDate = newEndDate;
         icalEvent.startDate = newStartDate;
 
@@ -685,12 +698,15 @@ function checkSkipEvent(event, icalEvent){
 
     //Check and filter recurrence-exceptions
     for (i=0; i<icalEvent.except.length; i++){
+      var exception = icalEvent.except[i];
+      var exceptionEnd = exception.endDate.compare(startUpdateTime);
+      var originalStart = exception.recurrenceId.compare(startUpdateTime);
       //Exclude the instance if it was moved from future to past
-      if((icalEvent.except[i].startDate.compare(startUpdateTime) < 0) && (icalEvent.except[i].recurrenceId.compare(startUpdateTime) >= 0)){
+      if(exceptionEnd < 0 && originalStart >= 0){
         Logger.log("Creating EXDATE for exception at " + icalEvent.except[i].recurrenceId.toString());
         icalEvent.component.addPropertyWithValue('exdate', icalEvent.except[i].recurrenceId.toString());
       }//Re-add the instance if it is moved from past to future
-      else if((icalEvent.except[i].startDate.compare(startUpdateTime) >= 0) && (icalEvent.except[i].recurrenceId.compare(startUpdateTime) < 0)){
+      else if(exceptionEnd >= 0 && originalStart < 0){
         Logger.log("Creating RDATE for exception at " + icalEvent.except[i].recurrenceId.toString());
         icalEvent.component.addPropertyWithValue('rdate', icalEvent.except[i].recurrenceId.toString());
         skip = false;
@@ -704,7 +720,7 @@ function checkSkipEvent(event, icalEvent){
     }
   }
   else{//normal events
-    if (icalEvent.endDate.compare(startUpdateTime) < 0){
+    if (eventEnd.compare(startUpdateTime) < 0){
       icsEventsIds.splice(icsEventsIds.indexOf(event.getFirstPropertyValue('uid').toString()),1);
       Logger.log("Skipping previous event " + event.getFirstPropertyValue('uid').toString());
       return true;
