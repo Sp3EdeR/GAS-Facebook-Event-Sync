@@ -1,5 +1,6 @@
 var dataFileName = "calendar_data";
 var dataHeaders = ["start", "end", "summary", "location", "description"];
+var dataTimeZone = "Europe/Budapest";
 
 /**
  * Caches upcoming events using the calendar snapshots maintained by the sync.
@@ -39,8 +40,9 @@ function updateDataCache(eventsByCalendar) {
     });
   }
 
-  var startOfToday = new Date().setUTCHours(0, 0, 0, 0);
+  var startOfToday = getLocalStartOfToday(dataTimeZone);
   var newIds = [];
+  var cacheWrites = [];
   calendarIds.forEach(function(calendarId) {
     var sheet = sheetsByName[calendarId];
     // Ensure the sheet for this calendar exists
@@ -50,8 +52,8 @@ function updateDataCache(eventsByCalendar) {
     }
 
     // Write events to the sheet for this calendar
-    writeDataCacheRows(sheet, [dataHeaders].concat(
-      getDataCacheRows(eventsByCalendar[calendarId], startOfToday)));
+    cacheWrites.push(buildDataCacheWrite(sheet, [dataHeaders].concat(
+      getDataCacheRows(eventsByCalendar[calendarId], startOfToday))));
 
     // Add the calendar ID to the list of new IDs if it hasn't been registered yet
     if (!registered[calendarId]) {
@@ -59,6 +61,10 @@ function updateDataCache(eventsByCalendar) {
       registered[calendarId] = true;
     }
   });
+
+  // Commit sheet creation and grid changes before writing through the Sheets API.
+  SpreadsheetApp.flush();
+  Sheets.Spreadsheets.batchUpdate({requests: cacheWrites}, spreadsheet.getId());
 
   // Store the new calendar IDs in the list of registered IDs
   if (newIds.length) {
@@ -118,7 +124,7 @@ function updateDataCache(eventsByCalendar) {
  * Builds export rows with ISO UTC dates and unchanged event text, including HTML.
  *
  * @param {Array<Calendar.Event>} events Calendar events already loaded by the sync.
- * @param {number} startOfToday Start of the current UTC day in epoch milliseconds.
+ * @param {number} startOfToday Start of the current local day in epoch milliseconds.
  * @return {Array<Array<string>>} Rows for events ending at or after the cutoff.
  */
 function getDataCacheRows(events, startOfToday) {
@@ -142,23 +148,32 @@ function getDataCacheRows(events, startOfToday) {
 }
 
 /**
- * Replaces a calendar's cached rows and clears any stale trailing events.
+ * Builds a batch request to replace cached rows and clear any stale trailing events.
  *
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet Destination calendar sheet.
  * @param {Array<Array<string>>} rows Header and event rows.
+ * @return {Object} Sheets API UpdateCells request.
  */
-function writeDataCacheRows(sheet, rows) {
+function buildDataCacheWrite(sheet, rows) {
   var lastRow = sheet.getLastRow();
   resizeDataCacheSheet(sheet, Math.max(2, rows.length), dataHeaders.length);
-  // Rich text writes literal strings, avoiding formula injection and date/number coercion.
-  var values = rows.map(function(row) {
-    return row.map(function(value) {
-      return SpreadsheetApp.newRichTextValue().setText(value).build();
-    });
-  });
-  sheet.getRange(1, 1, rows.length, dataHeaders.length).setRichTextValues(values);
-  if (lastRow > rows.length)
-    sheet.getRange(rows.length + 1, 1, lastRow - rows.length, 5).clearContent();
+  return {updateCells: {
+    // Cells in the range beyond the supplied rows are cleared by UpdateCells.
+    range: {
+      sheetId: sheet.getSheetId(),
+      startRowIndex: 0,
+      endRowIndex: Math.max(lastRow, rows.length),
+      startColumnIndex: 0,
+      endColumnIndex: dataHeaders.length
+    },
+    rows: rows.map(function(row) {
+      return {values: row.map(function(value) {
+        // Explicit string values prevent formula execution and date/number coercion.
+        return value === "" ? {} : {userEnteredValue: {stringValue: value}};
+      })};
+    }),
+    fields: "userEnteredValue"
+  }};
 }
 
 /**
@@ -175,4 +190,16 @@ function resizeDataCacheSheet(sheet, rows, columns) {
     sheet.insertRowsAfter(currentRows, rows - currentRows);
   if (columns > currentColumns)
     sheet.insertColumnsAfter(currentColumns, columns - currentColumns);
+}
+
+/**
+ * Returns the epoch milliseconds of midnight at the start of today in the given time zone.
+ *
+ * @param {string} [timeZone] IANA time zone name; defaults to GMT.
+ * @return {number} Start of the local day in epoch milliseconds.
+ */
+function getLocalStartOfToday(timeZone) {
+  var zone = timeZone || "GMT";
+  var localDate = Utilities.formatDate(new Date(), zone, "yyyy-MM-dd");
+  return Utilities.parseDate(localDate, zone, "yyyy-MM-dd").getTime();
 }
